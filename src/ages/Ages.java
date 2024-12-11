@@ -1,11 +1,13 @@
-package template;
+package ages;
 
+import ages.content.*;
 import mindustry.mod.*;
-import template.gen.*;
+import ages.gen.*;
 
-public class ModTemplate extends Mod{
+public class Ages extends Mod{
     @Override
     public void loadContent(){
         EntityRegistry.register();
+        AgBlocks.load();
     }
 }
