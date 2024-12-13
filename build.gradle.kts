@@ -70,6 +70,8 @@ allprojects{
     dependencies{
         // Downgrade Java 9+ syntax into being available in Java 8.
         annotationProcessor(entity(":downgrader"))
+        implementation("com.github.liplum:MultiCrafterLib:v1.7")
+        //implementation("com.github.jslkr2707:Quests:alpha_v0")
     }
 
     repositories{

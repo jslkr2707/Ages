@@ -1,10 +1,11 @@
-package ages.world.blocks;
+package ages.world.blocks.defense.pre;
 
 import ages.world.meta.*;
 import arc.*;
 import arc.audio.*;
 import arc.graphics.*;
 import arc.graphics.g2d.*;
+import arc.math.*;
 import arc.scene.ui.layout.*;
 import arc.util.*;
 import arc.util.io.*;
@@ -15,11 +16,10 @@ import mindustry.graphics.*;
 import mindustry.type.*;
 import mindustry.ui.*;
 import mindustry.world.blocks.defense.*;
-import mindustry.world.blocks.production.*;
 import mindustry.world.meta.*;
 
-import static ages.AgesVar.*;
 import static arc.Core.atlas;
+import static mindustry.Vars.tilesize;
 
 public class Thorn extends Wall {
     public int thornHealth;
@@ -28,6 +28,7 @@ public class Thorn extends Wall {
     public float thornSize;
     public float repairCool = 60f;
     public int repairAmount;
+    public int repairRange = 1;
     public float stickyness = 0.5f;
     public float chanceBreak = 0.5F;
     public Effect breakEffect;
@@ -36,7 +37,7 @@ public class Thorn extends Wall {
     public TextureRegion thornRegion;
 
     public Sound breakSound = Sounds.rockBreak;
-    public Sound repairSound = Sounds.pulse;
+    public Sound repairSound = Sounds.breaks;
 
     public Thorn(String name) {
         super(name);
@@ -45,13 +46,6 @@ public class Thorn extends Wall {
         this.configurable = true;
         this.thornSize = Vars.tilesize * this.thornSizeMultiplier;
         this.thornRegion = atlas.find(localizedName + "-thorn");
-    }
-
-    @Override
-    public void init(){
-        super.init();
-
-        this.repairAmount = repairItem.amount / requirements[0].amount * thornHealth;
     }
 
     @Override
@@ -66,7 +60,7 @@ public class Thorn extends Wall {
 
         this.addBar("repair", (e) -> {
             return new Bar("bar.thorn-repair", Pal.heal, () -> {
-                return ((ThornBuild)e).heat / repairCool;
+                return 1 - ((ThornBuild)e).heat / repairCool;
             });
         });
     }
@@ -90,6 +84,8 @@ public class Thorn extends Wall {
     public class ThornBuild extends WallBuild {
         public float thorn;
         public float heat;
+        public boolean r = false;
+        public Unit repairer;
 
         public ThornBuild(){
             super();
@@ -102,16 +98,28 @@ public class Thorn extends Wall {
             unit.damageContinuous(thornDamage / 60f);
             //TODO Modern thorns give continuous damage, and paralysis instead of knockback (L annotation processors)
             unit.vel.scl(stickyness);
+            if (unit.hasWeapons()) unit.reloadMultiplier /= stickyness;
         }
 
         public void repair(Unit unit){
+            r = true;
+            repairer = unit;
             if (!unit.hasItem()) return;
             if (unit.item() != repairItem.item || unit.stack.amount < repairItem.amount) return;
 
             unit.stack.amount -= repairItem.amount;
-            this.thorn += repairAmount; //Math.min(repairAmount, thornHealth - repairAmount);
+            thorn += Math.min(repairAmount, thornHealth - thorn);
             heat = repairCool;
             repairSound.play();
+        }
+
+        public void drawRepair(Unit u){
+            float xOffset = Mathf.random(-0.5f, 0.5f);
+            float yOffset = Mathf.random(-0.5f, 0.5f);
+            float dst = Mathf.dst(this.x, this.y, u.x + xOffset, u.y + yOffset);
+
+            Draw.rect(repairItem.item.fullIcon, Mathf.approach(this.x, u.x + xOffset, 0.01f), Mathf.approach(this.y, u.y + yOffset, 0.01f), Mathf.approachDelta(5.0F, 0F, 1 / 60f), Mathf.approachDelta(5.0F, 0F, 1 / 60f));
+            r = false;
         }
 
         public boolean canRepair() {
@@ -125,7 +133,6 @@ public class Thorn extends Wall {
 
         public void updateTile(){
             Units.nearbyEnemies(team, x - size * thornSize / 2, y - size * thornSize / 2, size * thornSize, size * thornSize, this::triggered);
-            Log.info(heat);
             if (canRepair() && heat > 0f) heat -= 1f;
         }
 
@@ -150,27 +157,45 @@ public class Thorn extends Wall {
             super.draw();
 
             //TODO Create thorn break effect
+            if (r){
+                Unit u = repairer;
+                float xOffset = Mathf.random(-0.5f, 0.5f);
+                float yOffset = Mathf.random(-0.5f, 0.5f);
+                float dst = Mathf.dst(this.x, this.y, u.x + xOffset, u.y + yOffset);
+
+                Tmp.v1.trns(Angles.angle(u.x, u.y, this.x, this.y), 4.0F);
+
+                float ix = u.x + Tmp.v1.x;
+                float iy = u.y + Tmp.v1.y;
+
+                Draw.rect(repairItem.item.fullIcon, ix, iy, 5.0F, 5.0F);
+                r = false;
+            }
         }
 
         public void buildConfiguration(Table table){
-            table.button(Core.bundle.format("thorn.repair", canRepair() && heat <= 0f ? "green" : "red"), () -> {
-                if (heat <= 0f) Units.nearby(team, x - size * thornSize * 1.5f, y - size * thornSize * 1.5f, size * thornSize * 3f, size * thornSize * 3f, this::repair);
-
-                Draw.color(Color.red);
-                Lines.rect(x - size * thornSize * 1.5f, y - size * thornSize * 1.5f, size * thornSize * 1.5f, size * thornSize * 1.5f);
+            table.button(Core.bundle.format("thorn.repair"), () -> {
+                if (heat <= 0f) Units.nearby(team, x, y, size * thornSize / 2 + tilesize * repairRange, this::repair);
             });
+        }
 
-            Draw.reset();
+        @Override
+        public void drawConfigure(){
+            Draw.alpha(Mathf.absin(0.5f, 0.5f));
+            Drawf.dashCircle(x, y, size * thornSize / 2 + tilesize * repairRange, Tmp.c1.set(Color.red).a(Mathf.absin(4.0f, 1.0f)));
+            super.drawConfigure();
         }
 
         public void write(Writes write){
             super.write(write);
             write.f(thorn);
+            write.f(heat);
         }
 
         public void read(Reads read, byte revision){
             super.read(read, revision);
             thorn = read.f();
+            heat = read.f();
         }
     }
 }
