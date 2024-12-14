@@ -169,7 +169,7 @@ public class Thorn extends Wall {
                 float iy = u.y + Tmp.v1.y;
 
                 Draw.rect(repairItem.item.fullIcon, ix, iy, 5.0F, 5.0F);
-                r = false;
+                if (ix == u.x && iy == u.y) r = false;
             }
         }
 
